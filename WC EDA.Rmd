@@ -1,0 +1,36 @@
+---
+title: "WC EDA"
+author: "Thomas Sato"
+date: "2024-10-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Import packages
+```{r}
+library(tidyverse)
+library(sf)
+```
+
+Read in data
+```{r}
+wc_data <- st_read("320001056-18 (App. C Grids)5.dxf")
+st_crs(wc_data) <- 2261
+```
+
+```{r}
+decision_units <- filter(wc_data, Layer == "00 Grid Areas" & EntityHandle != "17ADF")
+```
+
+Base plot
+```{r}
+ggplot(data = DU) +
+  geom_sf() +
+  theme_minimal() +
+  ggtitle("Spatial Data with LINESTRING Geometries")
+```
+
+
