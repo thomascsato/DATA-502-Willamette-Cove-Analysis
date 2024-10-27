@@ -13,6 +13,7 @@ Import packages
 ```{r}
 library(tidyverse)
 library(sf)
+library(readxl)
 ```
 
 Read in data
@@ -119,11 +120,79 @@ DU <- filter(DU, EntityHandle != "17ADF")
 ```{r}
 ggplot(data = DU) +
   geom_sf() +
+  geom_text(aes(label = EntityHandle,
+                x = st_coordinates(st_centroid(DU))[, "X"], 
+                y = st_coordinates(st_centroid(DU))[, "Y"]
+                ),
+            size = 3) +
   theme_minimal() +
   ggtitle("Spatial Data with LINESTRING Geometries")
 ```
+```{r}
+DU <- DU %>%
+  mutate(Text = recode(EntityHandle,
+                       "B66B" = "DU-01",
+                       "B654" = "DU-02",
+                       "B66C" = "DU-03",
+                       "B653" = "DU-04",
+                       "B66A" = "DU-05",
+                       "B655" = "DU-06",
+                       "B669" = "DU-07",
+                       "B668" = "DU-08",
+                       "B667" = "DU-09",
+                       "B664" = "DU-10",
+                       "B662" = "DU-11",
+                       "B65E" = "DU-12",
+                       "B663" = "DU-13",
+                       "B66E" = "DU-14",
+                       "B65F" = "DU-15",
+                       "17B12" = "DU-16",
+                       "B657" = "DU-17",
+                       "B674" = "DU-18",
+                       "B66D" = "DU-19",
+                       "14FF5" = "DU-20",
+                       "B673" = "DU-21",
+                       "14FFD" = "DU-22",
+                       "15005" = "DU-23",
+                       "B661" = "DU-24",
+                       "B666" = "DU-25",
+                       "B665" = "DU-26",
+                       "B660" = "DU-27",
+                       "D1E8" = "DU-28",
+                       "D1F1" = "DU-29",
+                       "D1F0" = "DU-30",
+                       "17E12" = "DU-31",
+                       "17E18" = "DU-31",
+                       "D1F7" = "DU-32",
+                       "B676" = "DU-33",
+                       "B65A" = "DU-34",
+                       "B65B" = "DU-35",
+                       "1802C" = "DU-36",
+                       "B66F" = "DU-36",
+                       "B670" = "DU-37",
+                       "B658" = "DU-38",
+                       "B60F" = "DU-38",
+                       "BE09" = "DU-39",
+                       "EA3A" = "DU-39",
+                       "EA3B" = "DU-40",
+                       "D1EA" = "DU-41",
+                       "17E0A" = "DU-43",
+                       "18029" = "DU-44",
+                       "BE89" = NA_character_))
+```
 
 
+```{r}
+ggplot(data = DU) +
+  geom_sf() +
+  geom_text(aes(label = Text,
+                x = st_coordinates(st_centroid(DU))[, "X"], 
+                y = st_coordinates(st_centroid(DU))[, "Y"]
+                ),
+            size = 3) +
+  theme_minimal() +
+  ggtitle("Spatial Data with LINESTRING Geometries")
+```
 
 
 NOTES:
@@ -134,5 +203,180 @@ Important layers for us:
 - SHP_POLY: base layer for parcels
 - Default_taxlots_1: extraneous details about the area
 - 0-ANNO_TEXT: text labels
+
+# Data Cleaning
+
+```{r}
+metals <- read_excel("WillametteCoveData.xlsx", sheet = "Metals by EPA Method 6020B")
+dioxins_furans <- read_excel("WillametteCoveData.xlsx", sheet = "Dioxins Furans by EPA Method 16")
+PAHs <- read_excel("WillametteCoveData.xlsx", sheet = "PAHs and Dibenzofuran by EPA Me")
+PCBs <- read_excel("WillametteCoveData.xlsx", sheet = "PCBs by EPA Method 8082A")
+results_summary <- read_excel("WillametteCoveData.xlsx", sheet = "Results Summary Ecological")
+avg_concentrations <- read_excel("WillametteCoveData.xlsx", sheet = "Average Concentrations By Depth")
+exceedance_ratios <- read_excel("WillametteCoveData.xlsx", sheet = "Exceedance Ratios")
+```
+
+```{r}
+metals_long <- metals %>%
+  select(-"Metals by EPA Method 6020B") %>%
+  pivot_longer(
+    cols = c(Antimony, Arsenic, Chromium, Copper, Lead, Mercury, Nickel, Selenium, Zinc),  
+    names_to = "Chemical",                      
+    values_to = "Concentration"                    
+  ) %>%
+  pivot_longer(
+    cols = ends_with("_detection"),         
+    names_to = "Chemical_detection",              
+    values_to = "Detection"                       
+  ) %>%
+  mutate(
+    Chemical_detection = str_replace(Chemical_detection, "_detection", "")
+  ) %>%
+  filter(Chemical == Chemical_detection) %>%      
+  select(-Chemical_detection, -`Sample Type...6`) %>%
+  rename("Sample Type" = "Sample Type...3")
+```
+
+```{r}
+dioxin_furan_cols <- c(
+  "2,3,7,8-TCDD",
+  "1,2,3,7,8-PeCDD",
+  "1,2,3,4,7,8-HxCDD",
+  "1,2,3,6,7,8-HxCDD",
+  "1,2,3,7,8,9-HxCDD",
+  "1,2,3,4,6,7,8-HpCDD",
+  "OCDD",
+  "2,3,7,8-TCDF",
+  "1,2,3,7,8-PeCDF",
+  "2,3,4,7,8-PeCDF",
+  "1,2,3,4,7,8-HxCDF",                     
+  "1,2,3,6,7,8-HxCDF",                     
+  "2,3,4,6,7,8-HxCDF",                     
+  "1,2,3,7,8,9-HxCDF",                      
+  "1,2,3,4,7,8-HpCDF",                       
+  "1,2,3,4,7,8,9-HpCDF",                    
+  "OCDF",                                             
+  "Total TCDD",                                       
+  "Total PeCDD",                                  
+  "Total HxCDD",                               
+  "Total HpCDD",                                  
+  "Total TCDF",                          
+  "Total PeCDF",                                   
+  "Total HxCDF",                                    
+  "Total HpCDF",                                     
+  "Total D/F TEQ (Mammal)")
+```
+
+
+```{r}
+dioxins_furans_long <- dioxins_furans %>%
+  select(-"Dioxins/Furans by EPA Method 1613B") %>%
+  pivot_longer(
+    cols = all_of(dioxin_furan_cols),
+    names_to = "Chemical",                      
+    values_to = "Concentration"                    
+  ) %>%
+  pivot_longer(
+    cols = ends_with("_detection"),         
+    names_to = "Chemical_detection",              
+    values_to = "Detection"                       
+  ) %>%
+  mutate(
+    Chemical_detection = str_replace(Chemical_detection, "_detection", "")
+  ) %>%
+  filter(Chemical == Chemical_detection) %>%      
+  select(-Chemical_detection)   
+```
+
+```{r}
+PAHs_cols <- c(
+  "Acenaphthene",
+  "Acenaphthylene",
+  "Anthracene",
+  "Benz(a) anthracene",
+  "Benzo(a) pyrene",
+  "Benzo(b) fluoranthene",
+  "Benzo(k) fluoranthene",
+  "Benzo(g,h,i) perylene",
+  "Chrysene",
+  "Dibenz(a,h) anthracene",              
+  "Fluoranthene",                                                       
+  "Fluorene",                                                                 
+  "Indeno(1,2,3-cd)pyrene",                                 
+  "1-Methylnaphthalene",                                          
+  "2-Methylnaphthalene",                                     
+  "Naphthalene",                                                       
+  "Phenanthrene",                                                   
+  "Pyrene",                                                               
+  "Dibenzofuran",
+  "Total HPAH",                                                          
+  "Total LPAH",                                                   
+  "cPAHs (BaP Eq.)")
+```
+
+```{r}
+PAHs_long <- PAHs %>%
+  select(-"PAHs and Dibenzofuran by EPA Method 8270E-SIM") %>%
+  pivot_longer(
+    cols = all_of(PAHs_cols),
+    names_to = "Chemical",                      
+    values_to = "Concentration"                    
+  ) %>%
+  pivot_longer(
+    cols = ends_with("_detection"),         
+    names_to = "Chemical_detection",              
+    values_to = "Detection"                       
+  ) %>%
+  mutate(
+    Chemical_detection = str_replace(Chemical_detection, "_detection", "")
+  ) %>%
+  filter(Chemical == Chemical_detection) %>%      
+  select(-Chemical_detection)  
+```
+
+```{r}
+PCBs_cols <- c(
+  "Aroclor 1016",
+  "Aroclor 1221",
+  "Aroclor 1232",
+  "Aroclor 1242",
+  "Aroclor 1248",
+  "Aroclor 1254",
+  "Aroclor 1260",
+  "Aroclor 1262",
+  "Aroclor 1268",
+  "Total PCB Aroclors")
+```
+
+
+```{r}
+PCBs_long <- PCBs %>%
+  select(-"PCBs by EPA Method 8082A") %>%
+  pivot_longer(
+    cols = all_of(PCBs_cols),
+    names_to = "Chemical",                      
+    values_to = "Concentration"                    
+  ) %>%
+  pivot_longer(
+    cols = ends_with("_detection"),         
+    names_to = "Chemical_detection",              
+    values_to = "Detection"                       
+  ) %>%
+  mutate(
+    Chemical_detection = str_replace(Chemical_detection, "_detection", "")
+  ) %>%
+  filter(Chemical == Chemical_detection) %>%      
+  select(-Chemical_detection) 
+```
+
+Union of all long datasets together for one big one
+
+```{r}
+concentrations <- rbind(metals_long, dioxins_furans_long, PAHs_long, PCBs_long)
+```
+
+```{r}
+write_csv(concentrations, "concentrations.csv")
+```
 
 
