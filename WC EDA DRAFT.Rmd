@@ -131,15 +131,15 @@ ggplot(data = DU) +
 ```{r}
 DU <- DU %>%
   mutate(Text = recode(EntityHandle,
-                       "B66B" = "DU-01",
-                       "B654" = "DU-02",
-                       "B66C" = "DU-03",
-                       "B653" = "DU-04",
-                       "B66A" = "DU-05",
-                       "B655" = "DU-06",
-                       "B669" = "DU-07",
-                       "B668" = "DU-08",
-                       "B667" = "DU-09",
+                       "B66B" = "DU-1",
+                       "B654" = "DU-2",
+                       "B66C" = "DU-3",
+                       "B653" = "DU-4",
+                       "B66A" = "DU-5",
+                       "B655" = "DU-6",
+                       "B669" = "DU-7",
+                       "B668" = "DU-8",
+                       "B667" = "DU-9",
                        "B664" = "DU-10",
                        "B662" = "DU-11",
                        "B65E" = "DU-12",
@@ -232,7 +232,8 @@ metals_long <- metals %>%
   mutate(
     Chemical_detection = str_replace(Chemical_detection, "_detection", "")
   ) %>%
-  filter(Chemical == Chemical_detection) %>%      
+  filter(Chemical == Chemical_detection) %>%
+  filter(`Sample Type...6` != "Mean") %>% # Getting rid of aggregate calculations
   select(-Chemical_detection, -`Sample Type...6`) %>%
   rename("Sample Type" = "Sample Type...3")
 ```
@@ -378,5 +379,43 @@ concentrations <- rbind(metals_long, dioxins_furans_long, PAHs_long, PCBs_long)
 ```{r}
 write_csv(concentrations, "concentrations.csv")
 ```
+
+
+
+Draft visualizations
+```{r}
+concentrations_geometries <- left_join(DU, concentrations, by = c("Text" = "Decision Unit"))
+```
+
+```{r}
+# ChatGPT generated:
+linestrings <- concentrations_geometries$geometry
+
+polygons <- lapply(linestrings, function(ls) {
+  coords <- st_coordinates(ls)
+  # Close the LINESTRING
+  closed_coords <- rbind(coords, coords[1, ])
+  # Create POLYGON
+  st_polygon(list(closed_coords))
+})
+
+polygons_sf <- st_sfc(polygons, crs = 2261)
+
+concentrations_polygons <- concentrations_geometries %>%
+  mutate(geometry = polygons_sf)
+
+concentrations_polygons$geometry <- st_zm(concentrations_polygons$geometry)
+```
+
+```{r}
+lead_concentration <- concentrations_polygons %>%
+  filter(Chemical == "Lead" & `Sample Depth (feet bgs)` == "0-1")
+
+ggplot(lead_concentration) +
+  geom_sf(aes(fill = Concentration)) +
+  theme_minimal() +
+  ggtitle("Spatial Data with LINESTRING Geometries")
+```
+
 
 
