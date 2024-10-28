@@ -1,0 +1,254 @@
+---
+title: "WC EDA Basic Plots"
+author: "Kevin Kiser"
+date: "2024-10-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+---
+title: "WC EDA Plots"
+author: "Kevin Kiser"
+date: "2024-10-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+```
+
+
+
+# Data Import
+
+```{r}
+
+results_summary <- read_excel("WillametteCoveData.xlsx", sheet = "Results Summary Ecological")
+avg_concentrations <- read_excel("WillametteCoveData.xlsx", sheet = "Average Concentrations By Depth")
+exceedance_ratios <- read_excel("WillametteCoveData.xlsx", sheet = "Exceedance Ratios")
+
+
+# concentrations from cleaned 
+# "Metals by EPA Method 6020B"
+# "Dioxins Furans by EPA Method 16"
+# "PAHs and Dibenzofuran by EPA Me"
+# "PCBs by EPA Method 8082A"
+
+concentrations <- read.csv("concentrations.csv")
+```
+
+# Create Heatmap plot function
+creates a heatmap for any given; chemical, location, and Threshold (ecological/human)
+
+```{r}
+
+create_heatmap <- function(chemical, location, affix) {
+  
+  red_palette <- colorRampPalette(c("salmon", "darkred"))(5)
+
+  threshold_string <- if_else(affix == "_Eco", "Ecological", "Human Health")
+
+  # Process the exceedance ratios and create the heatmap
+  heatmap_plot <- exceedance_ratios %>%
+    rename(`Sample Depth` = `Sample Depth (feet bgs)`) %>%
+    filter(`Sample Location` == location) %>%
+    select(`Decision Unit`, `Sample Depth`, matches(paste0("^", chemical, ".*", affix, "$"))) %>%
+    pivot_wider(
+      names_from = `Sample Depth`,  
+      values_from = matches(paste0("^", chemical, affix, "$"))
+    ) %>%
+    pivot_longer(-`Decision Unit`, names_to = "Sample Depth", values_to = "Exceedance_Ratio") %>%
+    mutate(`Sample Depth` = factor(`Sample Depth`, levels = sort(unique(`Sample Depth`), decreasing = TRUE)),
+           # Set color_range as a factor with specific levels for ordered legend
+           color_range = factor(case_when(
+             Exceedance_Ratio < 1 ~ "(< 1.0) Acceptable",
+             Exceedance_Ratio < 2 ~ "(1.0 - 2.0)",
+             Exceedance_Ratio < 3 ~ "(2.0 - 3.0)",
+             Exceedance_Ratio < 4 ~ "(3.0 - 4.0)",
+             Exceedance_Ratio >= 4 ~ "(> 4.0)"
+           ), levels = c("(< 1.0) Acceptable", "(1.0 - 2.0)", "(2.0 - 3.0)", "(3.0 - 4.0)", "(> 4.0)"))) %>%
+    
+    ggplot(aes(x = `Decision Unit`, y = `Sample Depth`, 
+               fill = color_range)) +  # Fill based on the new Range column
+    
+    geom_tile(color = "white", linewidth = 2) +
+    
+    geom_text(aes(label = round(Exceedance_Ratio, 1)), color = "black", size = 4) +
+    
+    labs(title = paste("Contaminant: ", chemical, "\n", threshold_string, " Threshold", "\n", location, sep=""),
+         x = "Decision Unit",
+         y = "Sample Depth (feet)",
+         fill = "Concentration \nper\nThreshold") +  # Legend title
+         
+    theme_minimal() +
+    
+    scale_fill_manual(values = c(
+      "(< 1.0) Acceptable" = "lightblue",
+      "(1.0 - 2.0)" = red_palette[1],
+      "(2.0 - 3.0)" = red_palette[2],
+      "(3.0 - 4.0)" = red_palette[3],
+      "(> 4.0)" = red_palette[4]
+    )) +
+    coord_fixed() +
+    
+    # Tilt x-axis labels by 90 degrees
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # Return the heatmap plot
+  return(heatmap_plot)
+}
+
+
+```
+
+
+# Heatmap Example Calls
+
+```{r}
+create_heatmap("Lead", "East Parcel", "_Eco")
+create_heatmap("Antimony", "Central Parcel", "_HH")
+create_heatmap("Lead", "West Parcel", "_Eco")
+
+```
+
+```{r}
+
+chemical_list <- c("Antimony", "Arsenic", "Chromium", "Copper", "Lead", "Mercury", "Nickel", "Selenium", "Zinc", "Total TEQ", "Dibenzofuran", "Total HPAH", "Total LPAH", "Total PCBs", "cPAHs")
+
+parcel_list <- c("West Parcel", "Central Parcel", "Central Parcel Concrete Slab", "East Parcel", "East Parcel Concrete Slab", "East Parcel Soil Beams")
+
+```
+
+
+# Bar Plot Concentration Function 
+Creates a plot of the highest chemical concentrations for any given DU
+
+```{r}
+
+du_concen_plot <- function(du) {
+  chemical_list <- c(
+    "Antimony", "Arsenic", "Chromium", "Copper", "Lead", "Mercury", "Nickel", "Selenium", "Zinc", 
+    "OCDD", "OCDF", "Total TCDD", "Total PeCDD", "Total HxCDD", "Total HpCDD", 
+    "Total TCDF", "Total PeCDF", "Total HxCDF", "Total HpCDF", "Total D/F TEQ (Mammal)", 
+    "Acenaphthene", "Acenaphthylene", "Anthracene", "Benz(a) anthracene", 
+    "Benzo(a) pyrene", "Benzo(b) fluoranthene", "Benzo(k) fluoranthene", "Benzo(g,h,i) perylene", 
+    "Chrysene", "Dibenz(a,h) anthracene", "Fluoranthene", "Fluorene", "Indeno(1,2,3-cd)pyrene", 
+    "1-Methylnaphthalene", "2-Methylnaphthalene", "Naphthalene", "Phenanthrene", 
+    "Pyrene", "Dibenzofuran", "Total HPAH", "Total LPAH", "cPAHs (BaP Eq.)", "Total PCB Aroclors"
+  )
+  
+  # Define the color palette
+  palette2 <- c(
+    "0-1" = "purple",
+    "1-2" = "lightblue",
+    "2-3" = "blue"
+  )
+  
+  # Create the plot and assign it to du_plot
+  du_plot <- concentrations %>%
+    filter(Chemical %in% chemical_list,
+           Decision.Unit == du) %>%
+    mutate(`Sample.Depth..feet.bgs.` = factor(case_when(
+      str_detect(`Sample.Depth..feet.bgs.`, "0-1") ~ "0-1",
+      str_detect(`Sample.Depth..feet.bgs.`, "1-2") ~ "1-2",
+      str_detect(`Sample.Depth..feet.bgs.`, "2-3") ~ "2-3",
+      TRUE ~ `Sample.Depth..feet.bgs.`)),
+      Chemical = fct_reorder(Chemical, Concentration, .desc = FALSE)) %>%
+    ggplot(aes(x = Chemical, y = Concentration, fill = `Sample.Depth..feet.bgs.`)) +
+    geom_col() +
+    labs(title = paste("Sampling Location:", du),
+         subtitle = "Chemical Concentrations",
+         x = "Chemical",
+         y = "Concentration (mg/kg)",
+         fill = "Sample Depth\n(feet)") +
+    scale_fill_manual(values = palette2) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(hjust = 1, size = 10),
+          axis.text.y = element_text(size = 6)) +
+    coord_flip()
+  
+  return(du_plot)
+}
+
+```
+
+# Example Calls
+
+```{r}
+du_concen_plot("DU-3")
+du_concen_plot("DU-41")
+```
+
+# Plot Function for average concentrations for each parcel
+
+```{r}
+
+
+avg_concen_parcel_plot <- function(parcel){
+  palette2 <- c(
+    "0-1" = "purple",
+    "1-2" = "lightblue",
+    "2-3" = "blue")
+
+plot <- avg_concentrations %>%
+  pivot_longer(
+    cols = 3:18,               
+    names_to = "chemical",    
+    values_to = "concentration" 
+  ) %>%
+  pivot_wider(
+    names_from = `Sample Depth (feet bgs)`,   
+    values_from = concentration               
+  ) %>%
+  pivot_longer(
+    cols = 3:5,
+    names_to =  "Depth",
+    values_to = "concentration"
+  ) %>%
+  filter(chemical != "Total PCB Aroclors_detection",
+         `Sample Location` == parcel) %>%
+  mutate(concentration = as.numeric(round(as.numeric(concentration), 2)),
+         chemical = fct_reorder(chemical, concentration, .desc = FALSE)) %>%
+  ggplot(aes(x=chemical, y=concentration, fill=Depth)) +
+  geom_col() +
+  labs(title = paste("Sampling Location:", parcel),
+         subtitle = "Average Chemical Concentrations",
+         x = "Chemical",
+         y = "Concentration (mg/kg)",
+         fill = "Sample Depth\n(feet)") +
+  scale_fill_manual(values = palette2) +
+  theme_minimal() +
+  coord_flip()
+return(plot)
+
+}  
+
+```
+
+#Example Calls
+
+```{r}
+# all possible parcel inputs
+# [1] "West Parcel"                 
+# [2] "Central Parcel"              
+# [3] "Central Parcel Concrete Slab"
+# [4] "East Parcel"                 
+# [5] "East Parcel Concrete Slabs"  
+# [6] "East Parcel Soil Berms" 
+
+avg_concen_parcel_plot("West Parcel")
+avg_concen_parcel_plot("East Parcel Concrete Slabs")
+```
+
+
+
+
+
