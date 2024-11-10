@@ -18,6 +18,8 @@ library(grid)
 library(png)
 library(shiny)
 library(readxl)
+library(plotly)
+library(base64enc)
 ```
 
 
@@ -320,8 +322,6 @@ Basic plot of area of interest.
 
 
 ```{r}
-
-
 # Load your image
 img <- readPNG("WC_sat.png")  # Update the path and function as needed
 
@@ -345,12 +345,12 @@ ui <- fluidPage(
   ),
   
   # output for the plot
-  plotOutput(outputId = "heavy_metals_plot")
+  plotlyOutput(outputId = "heavy_metals_plot")
 )
 
 # server logic
 server <- function(input, output) {
-  output$heavy_metals_plot <- renderPlot({
+  output$heavy_metals_plot <- renderPlotly({
     # Filter data based on selected chemical and depth
     filtered_data <- concentrations_geometries %>%
       filter(Chemical == input$chemical,
@@ -373,10 +373,6 @@ server <- function(input, output) {
     
     # plot
     heavy_metals_plot <- ggplot() +
-      
-      # Add image
-      annotation_custom(img_grob, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf) +
-
       geom_sf(data = filtered_data, aes(fill = concentration_binned), color = NA) +
       scale_fill_manual(values = c("#ADD8E6", "#FA8072", "#DE6055", "#C24039")) +
       theme_minimal() +
@@ -393,58 +389,31 @@ server <- function(input, output) {
         axis.text = element_blank()
       )
     
-    # plot output
-    print(heavy_metals_plot)
+    # Convert plot to plotly
+    plotly_plot <- ggplotly(heavy_metals_plot)
+    
+    plotly_plot <- plotly_plot %>%
+      layout(
+        images = list(
+          list(
+            # Encodes image file directly; was having problems getting image to show up otherwise.
+            source = base64enc::dataURI(file = "WC_sat.png"),
+            xref = "paper",
+            yref = "paper",
+            x = 0,
+            y = 1,
+            sizex = 1,
+            sizey = 1,
+            sizing = "stretch",
+            layer = "below"
+          )
+        )
+      )
   })
 }
 
 # run app 
 shinyApp(ui = ui, server = server)
-```
-
-
-
-
-
-
-
-# Shiny app basic example
-
-
-```{r}
-# library(shiny)
-# library(ggplot2)
-# 
-# 
-# sp <- fluidPage(
-#   selectInput(
-#     inputId = 'var1',
-#     label = 'Column X Axis',
-#     choices = colnames(mtcars)
-#   ),
-#   
-#   selectInput(
-#     inputId = 'var2',
-#     label = 'Column Y Axis',
-#     choices = colnames(mtcars)
-#   ),
-#   
-# 
-#   plotOutput(outputId = 'scatter')
-# )
-# 
-# 
-# server <- function(input, output) {
-#   output$scatter <- renderPlot({
-#     ggplot(
-#       data = mtcars, aes_string(x = input$var1, y = input$var2)
-#     ) +
-#     geom_point(color = 'darkgreen')
-#   })
-# }
-# 
-# 
-# shinyApp(ui = sp, server = server)
 ```
 
 
