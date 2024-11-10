@@ -345,7 +345,9 @@ ui <- fluidPage(
   ),
   
   # output for the plot
-  plotlyOutput(outputId = "heavy_metals_plot")
+  div(style = "width: 892px; height: 348px;",
+      plotlyOutput("heavy_metals_plot")
+  )
 )
 
 # server logic
@@ -390,7 +392,7 @@ server <- function(input, output) {
       )
     
     # Convert plot to plotly
-    plotly_plot <- ggplotly(heavy_metals_plot)
+    plotly_plot <- ggplotly(heavy_metals_plot, width = 892, height = 348)
     
     plotly_plot <- plotly_plot %>%
       layout(
@@ -407,8 +409,13 @@ server <- function(input, output) {
             sizing = "stretch",
             layer = "below"
           )
-        )
-      )
+        ),
+        xaxis = list(fixedrange = TRUE),
+        yaxis = list(fixedrange = TRUE),
+        autosize = FALSE
+      ) %>%
+      config(responsive = FALSE,
+        displayModeBar = FALSE)
   })
 }
 
