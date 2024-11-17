@@ -251,6 +251,14 @@ hot_spot$Page23RDIWorkPlan <- recode(hot_spot$Page23RDIWorkPlan,
                                      "Dioxin/Furan TEQ" = "Total D/F TEQ (Mammal)",
                                      "Total PCBs" = "Total PCB Aroclors")
 
+# Defining CoCs for later click drill down graphic
+cocs <- c(
+  "Antimony", "Arsenic", "Chromium", "Copper", "Lead",
+  "Mercury", "Nickel", "Selenium", "Zinc", "Total HPAH",
+  "Total LPAH", "Dibenzofuran", "Total PCB Aroclors",
+  "Total D/F TEQ (Mammal)"
+  )
+
 ui <- fluidPage(
   titlePanel("Heavy Metals Concentration Plot"),
   
@@ -268,14 +276,28 @@ ui <- fluidPage(
     choices = unique(concentrations_geometries$`Sample Depth (feet bgs)`[!is.na(concentrations_geometries$`Sample Depth (feet bgs)`)])
   ),
   
-  # output for the plot
-  div(style = "width: 892px; height: 348px;",
-      plotlyOutput("heavy_metals_plot")
+  # Use fluidRow to create a row with two columns
+  fluidRow(
+    # First column for heavy_metals_plot
+    column(width = 7,
+           div(style = "width: 100%; height: 348px;",
+               plotlyOutput("heavy_metals_plot")
+           )
+    ),
+    # Second column for du_plot
+    column(width = 5,
+           div(style = "width: 100%; height: 348px;",
+               plotOutput("du_plot")
+           )
+    )
   )
 )
 
 # server logic
-server <- function(input, output) {
+server <- function(input, output, session) {
+  # Reactive value to store the clicked region
+  clicked_region <- reactiveVal(NULL)
+  
   output$heavy_metals_plot <- renderPlotly({
     # Filter data based on selected chemical and depth
     filtered_data <- concentrations_geometries %>%
@@ -299,7 +321,8 @@ server <- function(input, output) {
     
     # plot
     heavy_metals_plot <- ggplot() +
-      geom_sf(data = filtered_data, aes(fill = concentration_binned), color = NA) +
+      # key = Text referring to Decision Units
+      geom_sf(data = filtered_data, aes(fill = concentration_binned, key = Text), color = NA) +
       scale_fill_manual(values = c("#ADD8E6", "#FA8072", "#DE6055", "#C24039")) +
       theme_minimal() +
       labs(title = paste(input$chemical, "Concentration Plot"),
@@ -316,7 +339,7 @@ server <- function(input, output) {
       )
     
     # Convert plot to plotly
-    plotly_plot <- ggplotly(heavy_metals_plot, width = 892, height = 348)
+    plotly_plot <- ggplotly(heavy_metals_plot, width = 892, height = 348, source = "heavy_metals_plot")
     
     plotly_plot <- plotly_plot %>%
       layout(
@@ -340,7 +363,81 @@ server <- function(input, output) {
       ) %>%
       config(responsive = FALSE,
              displayModeBar = FALSE)
+    
+    # Register click event
+    event_register(plotly_plot, "plotly_click")
   })
+  
+  # Observe click events on the plot
+  observeEvent(event_data("plotly_click", source = "heavy_metals_plot"), {
+    click_data <- event_data("plotly_click", source = "heavy_metals_plot")
+    if (!is.null(click_data)) {
+      clicked_region(click_data$key)
+    }
+  })
+  
+  # Decision Unit Plot Based on Click
+  output$du_plot <- renderPlot({
+    req(clicked_region())
+
+    # Filter data for region
+    decision_unit_clicked <- concentrations %>%
+      filter(`Decision Unit` == clicked_region() & Chemical %in% cocs)
+    
+    # Check if we have data for the clicked region
+    if (nrow(decision_unit_clicked) == 0) {
+      return(ggplot() + 
+               annotate("text", x = 0.5, y = 0.5, label = "No data available for this region") +
+               theme_void())
+    }
+    
+    # Joining with hotspot data
+    du_clicked_HS <- left_join(decision_unit_clicked, hot_spot, by = c("Chemical" = "Page23RDIWorkPlan"))
+    du_clicked_HS <- mutate(du_clicked_HS, exceedance = case_when(
+      Concentration > `ISM Hot Spot Level` ~ "Exceeds Hot Spot Level",
+      Concentration > `ISM PRG` ~ "Exceeds PRG",
+      TRUE ~ "Does not Exceed"
+    ))
+    
+    # Ordering chemicals for the graphic
+    ordering <- du_clicked_HS %>%
+      group_by(Chemical, exceedance) %>%
+      summarize(weight = n()) %>%
+      mutate(weight = case_when(
+        exceedance == "Exceeds Hot Spot Level" ~ weight * 3,
+        exceedance == "Exceeds PRG" ~ weight * 2,
+        TRUE ~ weight
+      )) %>%
+      group_by(Chemical) %>%
+      summarize(weight = sum(weight))
+    
+    # Joining again to order chemicals
+    du_clicked_HS <- left_join(du_clicked_HS, ordering)
+    du_clicked_HS$exceedance <- factor(du_clicked_HS$exceedance,
+                                       levels = c("Exceeds Hot Spot Level",
+                                                  "Exceeds PRG",
+                                                  "Does not Exceed"))
+    
+    # Create the detailed decision unit plot
+    ggplot(du_clicked_HS) +
+      geom_tile(aes(`Sample Depth (feet bgs)`, reorder(Chemical, weight), fill = exceedance)) +
+      theme_minimal() +
+      labs(title = paste("Which chemicals exceed ecological \nhot spot values in ", clicked_region(), "?", sep = ""),
+           subtitle = "PRG = Preliminary Remediation Goal",
+           y = "",
+           fill = "",
+           caption = "Source: Willamette Cove RDI Evaluation Report") +
+      scale_fill_manual(values = c("Does not Exceed" = "#deebf7",
+                                   "Exceeds PRG" = "#9ecae1",
+                                   "Exceeds Hot Spot Level" = "#3182bd")) +
+      theme(
+        plot.title = element_text(size = 24, hjust = 1),
+        axis.text.y = element_text(size = 14),
+        axis.text.x = element_text(size = 18),
+        axis.title.x = element_text(size = 18)
+      )
+  })
+  
 }
 
 # Run the application 
