@@ -286,7 +286,7 @@ ui <- fluidPage(
     ),
     # Second column for du_plot
     column(width = 5,
-           div(style = "width: 100%; height: 348px;",
+           div(style = "width: 100%; height: 600px;",
                plotOutput("du_plot")
            )
     )
@@ -305,7 +305,7 @@ server <- function(input, output, session) {
              `Sample Depth (feet bgs)` == input$depth) %>%
       mutate(
         concentration_binned = {
-          # breaks by quartile groups adjust to each input
+          # breaks by quantile groups adjust to each input
           breaks <- quantile(Concentration, probs = seq(0, 1, 0.25), na.rm = TRUE)
           cut(Concentration, 
               breaks = breaks,
@@ -319,10 +319,26 @@ server <- function(input, output, session) {
         }
       )
     
+    # Adding centroids for easier tooltip navigation
+    centroids <- st_centroid(filtered_data)
+    
     # plot
     heavy_metals_plot <- ggplot() +
       # key = Text referring to Decision Units
-      geom_sf(data = filtered_data, aes(fill = concentration_binned, key = Text), color = NA) +
+      geom_sf(data = filtered_data,
+              aes(fill = concentration_binned, key = Text),
+              color = "black",
+              linewidth = 0.25) +
+      # Adding better tooltip UI
+      geom_sf(data = centroids,
+              aes(text = paste("Decision Unit:",
+                               Text,
+                               "<br>Concentration:",
+                               round(Concentration, 2),
+                               "mg/kg"),
+                  key = Text),
+              size = 0,
+              alpha = 0) +
       scale_fill_manual(values = c("#ADD8E6", "#FA8072", "#DE6055", "#C24039")) +
       theme_minimal() +
       labs(title = paste(input$chemical, "Concentration Plot"),
@@ -339,7 +355,11 @@ server <- function(input, output, session) {
       )
     
     # Convert plot to plotly
-    plotly_plot <- ggplotly(heavy_metals_plot, width = 892, height = 348, source = "heavy_metals_plot")
+    plotly_plot <- ggplotly(heavy_metals_plot,
+                            width = 892,
+                            height = 348,
+                            source = "heavy_metals_plot",
+                            tooltip = "text")
     
     plotly_plot <- plotly_plot %>%
       layout(
@@ -359,7 +379,8 @@ server <- function(input, output, session) {
         ),
         xaxis = list(fixedrange = TRUE),
         yaxis = list(fixedrange = TRUE),
-        autosize = FALSE
+        autosize = FALSE,
+        hovermode = "closest"
       ) %>%
       config(responsive = FALSE,
              displayModeBar = FALSE)
@@ -420,23 +441,27 @@ server <- function(input, output, session) {
     
     # Create the detailed decision unit plot
     ggplot(du_clicked_HS) +
-      geom_tile(aes(`Sample Depth (feet bgs)`, reorder(Chemical, weight), fill = exceedance)) +
+      geom_tile(aes(`Sample Depth (feet bgs)`, reorder(Chemical, weight), fill = exceedance),
+                color = "black") +
       theme_minimal() +
-      labs(title = paste("Which chemicals exceed ecological \nhot spot values in ", clicked_region(), "?", sep = ""),
+      labs(title = paste("Which chemicals exceed ecological\nhot spot values in ", clicked_region(), "?", sep = ""),
            subtitle = "PRG = Preliminary Remediation Goal",
            y = "",
-           fill = "",
-           caption = "Source: Willamette Cove RDI Evaluation Report") +
+           fill = "") +
       scale_fill_manual(values = c("Does not Exceed" = "#deebf7",
                                    "Exceeds PRG" = "#9ecae1",
                                    "Exceeds Hot Spot Level" = "#3182bd")) +
       theme(
-        plot.title = element_text(size = 24, hjust = 1),
-        axis.text.y = element_text(size = 14),
+        plot.title = element_text(size = 28, hjust = 1, margin = margin(r = 22.5)),
+        plot.subtitle = element_text(size = 18, hjust = 1, margin = margin(r = 22.5)),
+        axis.text.y = element_text(size = 16, face = "bold"),
         axis.text.x = element_text(size = 18),
-        axis.title.x = element_text(size = 18)
+        axis.title.x = element_text(size = 18),
+        legend.text = element_text(size = 14),
+        legend.position = "bottom",
+        legend.box.margin = margin(r = 50)
       )
-  })
+  }, height = 600)
   
 }
 
