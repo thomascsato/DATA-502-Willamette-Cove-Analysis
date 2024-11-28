@@ -240,6 +240,8 @@ PCBs_long <- PCBs %>%
 concentrations <- rbind(metals_long, dioxins_furans_long, PAHs_long, PCBs_long) %>%
   # Removing Field Replicates and keeping original data.
   filter(`Sample Depth (feet bgs)` %in% c("0-1", "1-2", "2-3")) %>%
+  # Filtering out mean samples (ends with M)
+  filter(!str_detect(`Sample ID`, "M$")) %>%
   mutate(`Decision Unit` = substr(`Decision Unit`, 1, 5)) # Need first 5 characters (i.e. DU-44)
 
 concentrations_geometries <- left_join(concentrations_polygons,
@@ -250,6 +252,27 @@ concentrations_geometries <- left_join(concentrations_polygons,
 hot_spot$Page23RDIWorkPlan <- recode(hot_spot$Page23RDIWorkPlan,
                                      "Dioxin/Furan TEQ" = "Total D/F TEQ (Mammal)",
                                      "Total PCBs" = "Total PCB Aroclors")
+
+# Manually mutating values of some CoCs that were in different units in the work plan
+hot_spot_accurate <- hot_spot %>%
+  mutate(
+    `ISM PRG` = case_when(
+      Page23RDIWorkPlan == "Total HPAH" ~ `ISM PRG` * 1000,
+      Page23RDIWorkPlan == "Total LPAH" ~ `ISM PRG` * 1000,
+      Page23RDIWorkPlan == "Dibenzofuran" ~ `ISM PRG` * 1000,
+      Page23RDIWorkPlan == "Total PCB Aroclors" ~ `ISM PRG` * 1000,
+      Page23RDIWorkPlan == "Total D/F TEQ (Mammal)" ~ `ISM PRG` * 1000000,
+      TRUE ~ `ISM PRG`
+    ),
+    `ISM Hot Spot Level` = case_when(
+      Page23RDIWorkPlan == "Total HPAH" ~ `ISM Hot Spot Level` * 1000,
+      Page23RDIWorkPlan == "Total LPAH" ~ `ISM Hot Spot Level` * 1000,
+      Page23RDIWorkPlan == "Dibenzofuran" ~ `ISM Hot Spot Level` * 1000,
+      Page23RDIWorkPlan == "Total PCB Aroclors" ~ `ISM Hot Spot Level` * 1000,
+      Page23RDIWorkPlan == "Total D/F TEQ (Mammal)" ~ `ISM Hot Spot Level` * 1000000,
+      TRUE ~ `ISM Hot Spot Level`
+    )
+  )
 
 # Defining CoCs for later click drill down graphic
 cocs <- c(
@@ -413,7 +436,7 @@ server <- function(input, output, session) {
     }
     
     # Joining with hotspot data
-    du_clicked_HS <- left_join(decision_unit_clicked, hot_spot, by = c("Chemical" = "Page23RDIWorkPlan"))
+    du_clicked_HS <- left_join(decision_unit_clicked, hot_spot_accurate, by = c("Chemical" = "Page23RDIWorkPlan"))
     du_clicked_HS <- mutate(du_clicked_HS, exceedance = case_when(
       Concentration > `ISM Hot Spot Level` ~ "Exceeds Hot Spot Level",
       Concentration > `ISM PRG` ~ "Exceeds PRG",

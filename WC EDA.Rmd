@@ -279,7 +279,8 @@ Union of all long datasets together for one big one
 ```{r}
 concentrations <- rbind(metals_long, dioxins_furans_long, PAHs_long, PCBs_long) %>%
   filter(`Sample Depth (feet bgs)` %in% c("0-1", "1-2", "2-3")) %>% # Removing Field Replicates and keeping original data.
-  mutate(`Decision Unit` = substr(`Decision Unit`, 1, 5)) # Need first 5 characters (i.e. DU-44)
+  filter(!str_detect(`Sample ID`, "M$")) %>% # Filtering out mean samples (ends with M)
+  mutate(`Decision Unit` = substr(`Decision Unit`, 1, 5)) # Need first 5 characters (i.e. DU-44) 
 ```
 
 Joining together decision units and concentrations
@@ -296,6 +297,30 @@ hot_spot$Page23RDIWorkPlan <- recode(hot_spot$Page23RDIWorkPlan,
                                      "Dioxin/Furan TEQ" = "Total D/F TEQ (Mammal)",
                                      "Total PCBs" = "Total PCB Aroclors")
 ```
+
+Testing correction for hot spots
+```{r}
+hot_spot_accurate <- hot_spot %>%
+  mutate(
+    `ISM PRG` = case_when(
+      Page23RDIWorkPlan == "Total HPAH" ~ `ISM PRG` * 1000,
+      Page23RDIWorkPlan == "Total LPAH" ~ `ISM PRG` * 1000,
+      Page23RDIWorkPlan == "Dibenzofuran" ~ `ISM PRG` * 1000,
+      Page23RDIWorkPlan == "Total PCB Aroclors" ~ `ISM PRG` * 1000,
+      Page23RDIWorkPlan == "Total D/F TEQ (Mammal)" ~ `ISM PRG` * 1000000,
+      TRUE ~ `ISM PRG`
+    ),
+    `ISM Hot Spot Level` = case_when(
+      Page23RDIWorkPlan == "Total HPAH" ~ `ISM Hot Spot Level` * 1000,
+      Page23RDIWorkPlan == "Total LPAH" ~ `ISM Hot Spot Level` * 1000,
+      Page23RDIWorkPlan == "Dibenzofuran" ~ `ISM Hot Spot Level` * 1000,
+      Page23RDIWorkPlan == "Total PCB Aroclors" ~ `ISM Hot Spot Level` * 1000,
+      Page23RDIWorkPlan == "Total D/F TEQ (Mammal)" ~ `ISM Hot Spot Level` * 1000000,
+      TRUE ~ `ISM Hot Spot Level`
+    )
+  )
+```
+
 
 
 Basic plot of area of interest.
@@ -353,11 +378,11 @@ Ideally, this graph would be made for each contaminant of concern, and then we w
 cocs <- c("Antimony", "Arsenic", "Chromium", "Copper", "Lead", "Mercury", "Nickel", "Selenium", "Zinc", "Total HPAH", "Total LPAH", "Dibenzofuran", "Total PCB Aroclors", "Total D/F TEQ (Mammal)")
 
 DU_1 <- concentrations %>%
-  filter(`Decision Unit` == "DU-1" & Chemical %in% cocs)
+  filter(`Decision Unit` == "DU-13" & Chemical %in% cocs)
 ```
 
 ```{r}
-DU_1_HS <- left_join(DU_1, hot_spot, by = c("Chemical" = "Page23RDIWorkPlan"))
+DU_1_HS <- left_join(DU_1, hot_spot_accurate, by = c("Chemical" = "Page23RDIWorkPlan"))
 DU_1_HS <- mutate(DU_1_HS, exceedance = case_when(
   Concentration > `ISM Hot Spot Level` ~ "Exceeds Hot Spot Level",
   Concentration > `ISM PRG` ~ "Exceeds PRG",
