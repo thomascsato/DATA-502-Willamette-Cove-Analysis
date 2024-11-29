@@ -299,6 +299,9 @@ ui <- fluidPage(
     choices = unique(concentrations_geometries$`Sample Depth (feet bgs)`[!is.na(concentrations_geometries$`Sample Depth (feet bgs)`)])
   ),
   
+  actionButton("btn1", "Concentration", class = "btn-primary active"),
+  actionButton("btn2", "Exceedance", class = "btn-secondary"),
+  
   # Use fluidRow to create a row with two columns
   fluidRow(
     # First column for heavy_metals_plot
@@ -321,6 +324,48 @@ server <- function(input, output, session) {
   # Reactive value to store the clicked region
   clicked_region <- reactiveVal(NULL)
   
+  # Reactive value to track which button is active
+  fill_state <- reactiveVal("concentration_binned")
+  
+  # Update active state when buttons are clicked
+  observeEvent(input$btn1, {
+    updateActionButton(session, "btn1", label = "Concentration", icon = icon("chart-bar"))
+    updateActionButton(session, "btn2", label = "Exceedance", icon = icon("exclamation-triangle"))
+    fill_state("concentration_binned")
+  })
+  
+  observeEvent(input$btn2, {
+    updateActionButton(session, "btn1", label = "Concentration", icon = icon("chart-bar"))
+    updateActionButton(session, "btn2", label = "Exceedance", icon = icon("exclamation-triangle"))
+    fill_state("exceedance")
+  })
+  
+  observeEvent(input$btn1, {
+    removeUI("#btn1-style")
+    removeUI("#btn2-style")
+    insertUI(
+      selector = "head",
+      where = "beforeEnd",
+      ui = tags$style(HTML("
+      #btn1 { background-color: #007bff; color: white; }
+      #btn2 { background-color: #6c757d; color: white; }
+    "))
+    )
+  })
+  
+  observeEvent(input$btn2, {
+    removeUI("#btn1-style")
+    removeUI("#btn2-style")
+    insertUI(
+      selector = "head",
+      where = "beforeEnd",
+      ui = tags$style(HTML("
+      #btn1 { background-color: #6c757d; color: white; }
+      #btn2 { background-color: #007bff; color: white; }
+    "))
+    )
+  })
+  
   output$heavy_metals_plot <- renderPlotly({
     # Filter data based on selected chemical and depth
     filtered_data <- concentrations_geometries %>%
@@ -342,14 +387,25 @@ server <- function(input, output, session) {
         }
       )
     
+    # Calculate categories for thresholds
+    # Joining with hotspot data
+    map_thresholds <- left_join(filtered_data,
+                                hot_spot_accurate,
+                                by = c("Chemical" = "Page23RDIWorkPlan"))
+    map_thresholds <- mutate(map_thresholds, exceedance = case_when(
+      Concentration > `ISM Hot Spot Level` ~ "Exceeds Hot Spot Level",
+      Concentration > `ISM PRG` ~ "Exceeds PRG",
+      TRUE ~ "Does not Exceed"
+    ))
+    
     # Adding centroids for easier tooltip navigation
-    centroids <- st_centroid(filtered_data)
+    centroids <- st_centroid(map_thresholds)
     
     # plot
     heavy_metals_plot <- ggplot() +
       # key = Text referring to Decision Units
-      geom_sf(data = filtered_data,
-              aes(fill = concentration_binned, key = Text),
+      geom_sf(data = map_thresholds,
+              aes_string(fill = fill_state(), key = "Text"),
               color = "black",
               linewidth = 0.25) +
       # Adding better tooltip UI
@@ -362,12 +418,12 @@ server <- function(input, output, session) {
                   key = Text),
               size = 0,
               alpha = 0) +
-      scale_fill_manual(values = c("#ADD8E6", "#FA8072", "#DE6055", "#C24039")) +
       theme_minimal() +
+      scale_fill_manual(values = c("#ADD8E6", "#FA8072", "#DE6055", "#C24039")) +
       labs(title = paste(input$chemical, "Concentration Plot"),
            subtitle = paste("Higher concentrations of", input$chemical),
-           fill = paste("Concentration of\n", input$chemical, "(mg/kg)"),
-           caption = "Source: Willamette Cove RDI Evaluation Report") +
+           caption = "Source: Willamette Cove RDI Evaluation Report",
+           fill = paste("Concentration of\n", input$chemical, "(mg/kg)")) +
       theme(
         panel.spacing = unit(-3, "lines"),
         panel.grid = element_blank(),
