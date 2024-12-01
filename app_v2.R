@@ -344,7 +344,7 @@ ui <- fluidPage(
       actionButton("btn2", "Threshold", class = "btn-secondary")
     )
   ),
-
+  
   fluidRow(
     # map plot
     column(
