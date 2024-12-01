@@ -283,7 +283,24 @@ cocs <- c(
   )
 
 ui <- fluidPage(
-  titlePanel("Heavy Metals Concentration Plot"),
+  
+  fluidRow(
+    column(width = 4, 
+           h4("Willamette Cove Remediation Application",
+              style = "padding-top: 20px; font-size: 36px;")
+    ),
+    column(width = 8, 
+           h4("Hover over each Decision Unit and click to see more detail",
+              style = "padding-top: 20px; text-align: right; font-size: 24px;"),
+           h4("Concentrations of various contaminants of concern (CoCs) are
+              calculated from soil samples in each Decision Unit (DU) at
+              three levels below ground surface (bgs). This interactive application
+              aims to visualize these concentrations CoCs such that a viewer will be
+              able to easily identify how CoCs are distributed across space and
+              within each Decision Unit.",
+              style = "text-align: justify;")
+    )
+  ),
   
   # dropdown menu for chemicals
   selectInput(
@@ -422,16 +439,24 @@ server <- function(input, output, session) {
       scale_fill_manual(values = c("#ADD8E6", "#FA8072", "#DE6055", "#C24039")) +
       labs(title = paste(input$chemical, "Concentration Plot"),
            subtitle = paste("Higher concentrations of", input$chemical),
-           caption = "Source: Willamette Cove RDI Evaluation Report",
-           fill = paste("Concentration of\n", input$chemical, "(mg/kg)")) +
+           caption = "Source: Willamette Cove RDI Evaluation Report") +
       theme(
         panel.spacing = unit(-3, "lines"),
         panel.grid = element_blank(),
         strip.text = element_text(margin = margin(t = 10, b = 75)),
         strip.text.y.left = element_text(size = 16, angle = 0),
         plot.title = element_text(size = 18),
-        axis.text = element_blank()
+        axis.text = element_blank(),
+        legend.position = "top"
       )
+    
+    if(fill_state() == "concentration_binned") {
+      heavy_metals_plot <- heavy_metals_plot +
+        labs(fill = paste("Concentration of\n", input$chemical, "(mg/kg)"))
+    } else {
+      heavy_metals_plot <- heavy_metals_plot +
+        labs(fill = paste("Threshold levels for\n", input$chemical, "(mg/kg)"))
+    }
     
     # Convert plot to plotly
     plotly_plot <- ggplotly(heavy_metals_plot,
@@ -442,6 +467,10 @@ server <- function(input, output, session) {
     
     plotly_plot <- plotly_plot %>%
       layout(
+        #legend = list(orientation = "h", # horizontal legend
+        #              xanchor = "center", # center the legend horizontally
+        #              x = 0.5, # position at the middle of the plot
+        #              y = 1.2), # position above the plot
         images = list(
           list(
             # Encodes image file directly; was having problems getting image to show up otherwise.
