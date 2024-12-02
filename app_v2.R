@@ -18,7 +18,8 @@ PAHs <- read_excel("WillametteCoveData.xlsx", sheet = "PAHs and Dibenzofuran by 
 PCBs <- read_excel("WillametteCoveData.xlsx", sheet = "PCBs by EPA Method 8082A")
 
 # Hot spot levels
-hot_spot <- read_excel("WillametteCoveData.xlsx", sheet = "Hot Spot Levels")
+hot_spot_eco <- read_excel("WillametteCoveData.xlsx", sheet = "Hot Spot Levels")
+hot_spot_hh <- read_excel("WillametteCoveData.xlsx", sheet = "Hot Spot Levels HH")
 
 # Filters out one 3D LINESTRING that broke the graphic.
 # The 00 Grid Areas layer includes boundaries of decision units.
@@ -249,12 +250,16 @@ concentrations_geometries <- left_join(concentrations_polygons,
                                        by = c("Text" = "Decision Unit"))
 
 # Recoding values for later join
-hot_spot$Page23RDIWorkPlan <- recode(hot_spot$Page23RDIWorkPlan,
-                                     "Dioxin/Furan TEQ" = "Total D/F TEQ (Mammal)",
-                                     "Total PCBs" = "Total PCB Aroclors")
+hot_spot_eco$Page23RDIWorkPlan <- recode(hot_spot_eco$Page23RDIWorkPlan,
+                                         "Dioxin/Furan TEQ" = "Total D/F TEQ (Mammal)",
+                                         "Total PCBs" = "Total PCB Aroclors")
+hot_spot_hh$Page23RDIWorkPlan <- recode(hot_spot_hh$Page23RDIWorkPlan,
+                                        "Dioxin/Furan TEQ" = "Total D/F TEQ (Mammal)",
+                                        "Total PCBs" = "Total PCB Aroclors")
 
 # Manually mutating values of some CoCs that were in different units in the work plan
-hot_spot_accurate <- hot_spot %>%
+# No need to do this for manually inserted human health hot spot data
+hot_spot_accurate <- hot_spot_eco %>%
   mutate(
     `ISM PRG` = case_when(
       Page23RDIWorkPlan == "Total HPAH" ~ `ISM PRG` * 1000,
@@ -282,8 +287,8 @@ cocs <- c(
   "Total D/F TEQ (Mammal)"
 )
 
-# input values for toggling the plot size
-full_map <- c(892,348,.83,.735,8)
+# input values for toggling the plot size 892
+full_map <- c(700,348,.83,.735,8)
 small_map <- c(512,200,-.29,.5,6)
 
 ##########################
@@ -338,27 +343,31 @@ ui <- fluidPage(
     
     # Third column: Buttons for switching between concentrations and thresholds
     column(
-      width = 4,
-      div(style = "padding-top: 40px;"),
-      actionButton("btn1", "Quartile", class = "btn-primary active"),
-      actionButton("btn2", "Threshold", class = "btn-secondary")
+      width = 2,
+      div(style = "padding-top: 10px;"),
+      div(style = "margin-bottom: 5px;", 
+          actionButton("btn1", "Quartile", class = "btn-primary active", style = "width: 100%;")),
+      div(style = "margin-bottom: 5px;", 
+          actionButton("btn2", "Ecological Threshold", class = "btn-secondary", style = "width: 100%;")),
+      div(style = "margin-bottom: 5px;", 
+          actionButton("btn3", "Human Health Threshold", class = "btn-tertiary", style = "width: 100%;"))
     )
   ),
   
   fluidRow(
     # map plot
     column(
-      width = 9,  
+      width = 8,  
       uiOutput("map_column_ui")
     ),
     
     # DU plot 
     column(
-      width = 3,  
+      width = 4,
       div(style = "padding: 0px; margin-left: 0px;",  # Added padding and left margin
           plotOutput("du_plot", height = "600px")
       )
-    ),
+    )
   )
 )
 
@@ -377,25 +386,36 @@ server <- function(input, output, session) {
   # Update active state when buttons are clicked
   observeEvent(input$btn1, {
     updateActionButton(session, "btn1", label = "Quartile", icon = icon("chart-bar"))
-    updateActionButton(session, "btn2", label = "Threshold", icon = icon("exclamation-triangle"))
+    updateActionButton(session, "btn2", label = "Ecological Threshold", icon = icon("exclamation-triangle"))
+    updateActionButton(session, "btn3", label = "Human Health Threshold", icon = icon("exclamation-triangle"))
     fill_state("concentration_binned")
   })
   
   observeEvent(input$btn2, {
     updateActionButton(session, "btn1", label = "Quartile", icon = icon("chart-bar"))
-    updateActionButton(session, "btn2", label = "Threshold", icon = icon("exclamation-triangle"))
-    fill_state("exceedance")
+    updateActionButton(session, "btn2", label = "Ecological Threshold", icon = icon("exclamation-triangle"))
+    updateActionButton(session, "btn3", label = "Human Health Threshold", icon = icon("exclamation-triangle"))
+    fill_state("exceedance_eco")
+  })
+  
+  observeEvent(input$btn3, {
+    updateActionButton(session, "btn1", label = "Quartile", icon = icon("chart-bar"))
+    updateActionButton(session, "btn2", label = "Ecological Threshold", icon = icon("exclamation-triangle"))
+    updateActionButton(session, "btn3", label = "Human Health Threshold", icon = icon("exclamation-triangle"))
+    fill_state("exceedance_hh")
   })
   
   observeEvent(input$btn1, {
     removeUI("#btn1-style")
     removeUI("#btn2-style")
+    removeUI("#btn3-style")
     insertUI(
       selector = "head",
       where = "beforeEnd",
       ui = tags$style(HTML("
       #btn1 { background-color: #007bff; color: white; }
       #btn2 { background-color: #6c757d; color: white; }
+      #btn3 { background-color: #6c757d; color: white; }
     "))
     )
   })
@@ -403,12 +423,29 @@ server <- function(input, output, session) {
   observeEvent(input$btn2, {
     removeUI("#btn1-style")
     removeUI("#btn2-style")
+    removeUI("#btn3-style")
     insertUI(
       selector = "head",
       where = "beforeEnd",
       ui = tags$style(HTML("
       #btn1 { background-color: #6c757d; color: white; }
       #btn2 { background-color: #007bff; color: white; }
+      #btn3 { background-color: #6c757d; color: white; }
+    "))
+    )
+  })
+  
+  observeEvent(input$btn3, {
+    removeUI("#btn1-style")
+    removeUI("#btn2-style")
+    removeUI("#btn3-style")
+    insertUI(
+      selector = "head",
+      where = "beforeEnd",
+      ui = tags$style(HTML("
+      #btn1 { background-color: #6c757d; color: white; }
+      #btn2 { background-color: #6c757d; color: white; }
+      #btn3 { background-color: #007bff; color: white; }
     "))
     )
   })
@@ -468,11 +505,24 @@ server <- function(input, output, session) {
       map_thresholds <- left_join(filtered_data,
                                   hot_spot_accurate,
                                   by = c("Chemical" = "Page23RDIWorkPlan"))
-      map_thresholds <- mutate(map_thresholds, exceedance = case_when(
-        Concentration > `ISM Hot Spot Level` ~ "Exceeds Hot Spot Level",
-        Concentration > `ISM PRG` ~ "Exceeds PRG",
-        TRUE ~ "Does not Exceed"
-      ))
+      map_thresholds <- left_join(map_thresholds,
+                                  hot_spot_hh,
+                                  by = c("Chemical" = "Page23RDIWorkPlan"))
+      map_thresholds <- map_thresholds %>%
+        mutate(
+          exceedance_eco = case_when(
+            Concentration > `ISM Hot Spot Level.x` ~ "Exceeds Hot Spot Level",
+            Concentration > `ISM PRG.x` ~ "Exceeds PRG",
+            is.na(`ISM PRG.x`) ~ "No Data",
+            TRUE ~ "Does not Exceed"
+          ),
+          exceedance_hh = case_when(
+            Concentration > `ISM Hot Spot Level.y` ~ "Exceeds Hot Spot Level",
+            Concentration > `ISM PRG.y` ~ "Exceeds PRG",
+            is.na(`ISM PRG.y`) ~ "No Data",
+            TRUE ~ "Does not Exceed"
+          )
+        )
       
       # Adding centroids for easier tooltip navigation
       centroids <- st_centroid(map_thresholds)
@@ -507,19 +557,27 @@ server <- function(input, output, session) {
           axis.text = element_blank(),
           plot.margin = margin(t = 0, r = 5, b = 0, l = 5),
           legend.text = element_text(size = selected_map()[5]),
-          legend.title = element_text(size = selected_map()[5]),
+          legend.title = element_text(size = selected_map()[5])
         )
       
       if(fill_state() == "concentration_binned") {
         heavy_metals_plot <- heavy_metals_plot +
           scale_fill_manual(values = c("#ADD8E6", "#FA8072", "#DE6055", "#C24039")) +
           labs(fill = paste("Concentration of\n", input$chemical, "(mg/kg)"))
+      } else if(fill_state() == "exceedance_eco") {
+        heavy_metals_plot <- heavy_metals_plot +
+          scale_fill_manual(values = c("Does not Exceed" = "#ADD8E6",
+                                       "Exceeds PRG" = "#FA8072",
+                                       "Exceeds Hot Spot Level" = "#DE6055",
+                                       "No Data" = "gray50")) +
+          labs(fill = paste("Ecological threshold levels\nfor", input$chemical, "(mg/kg)"))
       } else {
         heavy_metals_plot <- heavy_metals_plot +
           scale_fill_manual(values = c("Does not Exceed" = "#ADD8E6",
                                        "Exceeds PRG" = "#FA8072",
-                                       "Exceeds Hot Spot Level" = "#DE6055")) +
-          labs(fill = paste("Threshold levels for\n", input$chemical, "(mg/kg)"))
+                                       "Exceeds Hot Spot Level" = "#DE6055",
+                                       "No Data" = "gray50")) +
+          labs(fill = paste("Human Health threshold\nlevels for", input$chemical, "(mg/kg)"))
       }
       
       # Convert plot to plotly
@@ -589,57 +647,120 @@ server <- function(input, output, session) {
                theme_void())
     }
     
-    # Joining with hotspot data
-    du_clicked_HS <- left_join(decision_unit_clicked, hot_spot_accurate, by = c("Chemical" = "Page23RDIWorkPlan"))
-    du_clicked_HS <- mutate(du_clicked_HS, exceedance = case_when(
-      Concentration > `ISM Hot Spot Level` ~ "Exceeds Hot Spot Level",
-      Concentration > `ISM PRG` ~ "Exceeds PRG",
-      TRUE ~ "Does not Exceed"
-    ))
+    # Three buttons for three possibilities: Quartiles, Eco Thresholds, HH Thresholds
+    if(fill_state() == "exceedance_hh") {
+      
+      # Joining with hotspot data
+      du_clicked_HS <- left_join(decision_unit_clicked, hot_spot_hh, by = c("Chemical" = "Page23RDIWorkPlan"))
+      du_clicked_HS <- mutate(du_clicked_HS, exceedance = case_when(
+        Concentration > `ISM Hot Spot Level` ~ "Exceeds Hot Spot Level",
+        Concentration > `ISM PRG` ~ "Exceeds PRG",
+        is.na(`ISM PRG`) ~ "No Data",
+        TRUE ~ "Does not Exceed"
+      ))
+      
+      # Ordering chemicals for the graphic
+      ordering <- du_clicked_HS %>%
+        group_by(Chemical, exceedance) %>%
+        summarize(weight = n()) %>%
+        mutate(weight = case_when(
+          exceedance == "Exceeds Hot Spot Level" ~ weight * 3,
+          exceedance == "Exceeds PRG" ~ weight * 2,
+          TRUE ~ weight
+        )) %>%
+        group_by(Chemical) %>%
+        summarize(weight = sum(weight))
+      
+      # Joining again to order chemicals
+      du_clicked_HS <- left_join(du_clicked_HS, ordering)
+      du_clicked_HS$exceedance <- factor(du_clicked_HS$exceedance,
+                                         levels = c("Exceeds Hot Spot Level",
+                                                    "Exceeds PRG",
+                                                    "Does not Exceed"))
+      
+      # Create the detailed decision unit plot
+      ggplot(du_clicked_HS) +
+        geom_tile(aes(`Sample Depth (feet bgs)`, reorder(Chemical, weight), fill = exceedance),
+                  color = "black") +
+        theme_minimal() +
+        labs(title = paste("COCs exceeding Human Health\nScreening Levels for ", clicked_region(), sep = ""),
+             subtitle = "",
+             y = "",
+             fill = "") +
+        scale_fill_manual(values = c("Does not Exceed" = "#ADD8E6",
+                                     "Exceeds PRG" = "#FA8072",
+                                     "Exceeds Hot Spot Level" = "#C24039",
+                                     "No Data"= "gray50")) +
+        theme(
+          plot.title = element_text(size = 20, hjust = 1, margin = margin(r = 22.5)),
+          plot.subtitle = element_text(size = 12, hjust = 1, margin = margin(r = 22.5)),
+          axis.text.y = element_text(size = 16, face = "bold"),
+          axis.text.x = element_text(size = 16),
+          axis.title.x = element_text(size = 16),
+          legend.text = element_text(size = 16),
+          legend.direction = "vertical",
+          legend.position = "bottom",
+          legend.box.margin = margin(r = 50)
+        )
+      
+    } else { # Quartile selection defaults to ecological
+      
+      # Joining with hotspot data
+      du_clicked_HS <- left_join(decision_unit_clicked, hot_spot_accurate, by = c("Chemical" = "Page23RDIWorkPlan"))
+      du_clicked_HS <- mutate(du_clicked_HS, exceedance = case_when(
+        Concentration > `ISM Hot Spot Level` ~ "Exceeds Hot Spot Level",
+        Concentration > `ISM PRG` ~ "Exceeds PRG",
+        is.na(`ISM PRG`) ~ "No Data",
+        TRUE ~ "Does not Exceed"
+      ))
+      
+      # Ordering chemicals for the graphic
+      ordering <- du_clicked_HS %>%
+        group_by(Chemical, exceedance) %>%
+        summarize(weight = n()) %>%
+        mutate(weight = case_when(
+          exceedance == "Exceeds Hot Spot Level" ~ weight * 3,
+          exceedance == "Exceeds PRG" ~ weight * 2,
+          TRUE ~ weight
+        )) %>%
+        group_by(Chemical) %>%
+        summarize(weight = sum(weight))
+      
+      # Joining again to order chemicals
+      du_clicked_HS <- left_join(du_clicked_HS, ordering)
+      du_clicked_HS$exceedance <- factor(du_clicked_HS$exceedance,
+                                         levels = c("Exceeds Hot Spot Level",
+                                                    "Exceeds PRG",
+                                                    "Does not Exceed"))
+      
+      # Create the detailed decision unit plot
+      ggplot(du_clicked_HS) +
+        geom_tile(aes(`Sample Depth (feet bgs)`, reorder(Chemical, weight), fill = exceedance),
+                  color = "black") +
+        theme_minimal() +
+        # COCs exceeding Ecological Screening Levels for
+        labs(title = paste("COCs exceeding Ecological\nScreening Levels for ", clicked_region(), sep = ""),
+             subtitle = "",
+             y = "",
+             fill = "") +
+        scale_fill_manual(values = c("Does not Exceed" = "#ADD8E6",
+                                     "Exceeds PRG" = "#FA8072",
+                                     "Exceeds Hot Spot Level" = "#C24039",
+                                     "No Data"= "gray50")) +
+        theme(
+          plot.title = element_text(size = 20, hjust = 1, margin = margin(r = 22.5)),
+          plot.subtitle = element_text(size = 12, hjust = 1, margin = margin(r = 22.5)),
+          axis.text.y = element_text(size = 16, face = "bold"),
+          axis.text.x = element_text(size = 16),
+          axis.title.x = element_text(size = 16),
+          legend.text = element_text(size = 16),
+          legend.direction = "vertical",
+          legend.position = "bottom",
+          legend.box.margin = margin(r = 50)
+        )
+      
+    }
     
-    # Ordering chemicals for the graphic
-    ordering <- du_clicked_HS %>%
-      group_by(Chemical, exceedance) %>%
-      summarize(weight = n()) %>%
-      mutate(weight = case_when(
-        exceedance == "Exceeds Hot Spot Level" ~ weight * 3,
-        exceedance == "Exceeds PRG" ~ weight * 2,
-        TRUE ~ weight
-      )) %>%
-      group_by(Chemical) %>%
-      summarize(weight = sum(weight))
-    
-    # Joining again to order chemicals
-    du_clicked_HS <- left_join(du_clicked_HS, ordering)
-    du_clicked_HS$exceedance <- factor(du_clicked_HS$exceedance,
-                                       levels = c("Exceeds Hot Spot Level",
-                                                  "Exceeds PRG",
-                                                  "Does not Exceed"))
-    
-    # Create the detailed decision unit plot
-    ggplot(du_clicked_HS) +
-      geom_tile(aes(`Sample Depth (feet bgs)`, reorder(Chemical, weight), fill = exceedance),
-                color = "black") +
-      theme_minimal() +
-      # COCs exceeding Ecological Screening Levels for
-      labs(title = paste("COCs exceeding \nEcological Screening\n Levels for ", clicked_region(), sep = ""),
-           subtitle = "",
-           y = "",
-           fill = "") +
-      scale_fill_manual(values = c("Does not Exceed" = "#ADD8E6",
-                                   "Exceeds PRG" = "#FA8072",
-                                   "Exceeds Hot Spot Level" = "#C24039")) +
-      theme(
-        plot.title = element_text(size = 16, hjust = 1, margin = margin(r = 22.5)),
-        plot.subtitle = element_text(size = 12, hjust = 1, margin = margin(r = 22.5)),
-        axis.text.y = element_text(size = 12, face = "bold"),
-        axis.text.x = element_text(size = 12),
-        axis.title.x = element_text(size = 12),
-        legend.text = element_text(size = 12),
-        legend.direction = "vertical",
-        legend.position = "bottom",
-        legend.box.margin = margin(r = 50)
-      )
   }, height = 600)
   
   # Render plots for different depths
